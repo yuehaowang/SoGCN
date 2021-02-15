@@ -29,7 +29,6 @@ python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn sogcn --K 2 --de
 python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn sogcn --K 4 --device $DEVICE --runs 4 --epochs 500 --filename "$LOG_DIR/molhiv_sogcn_4.log" $TEST
 python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn sogcn --K 6 --device $DEVICE --runs 4 --epochs 500 --filename "$LOG_DIR/molhiv_sogcn_6.log" $TEST
 python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn gcnii --device $DEVICE --runs 4 --epochs 500 --filename "$LOG_DIR/molhiv_gcnii.log" $TEST
-python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn gcnii_star --device $DEVICE --runs 4 --epochs 500 --filename "$LOG_DIR/molhiv_gcnii_star.log" $TEST
 python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn appnp --device $DEVICE --runs 4 --epochs 100 --filename "$LOG_DIR/molhiv_appnp.log" $TEST
 python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn arma --device $DEVICE --runs 4 --epochs 500 --filename "$LOG_DIR/molhiv_arma.log" $TEST
 python main_molhiv_graphproppred.py --dataset ogbg-molhiv --gnn graphsage --device $DEVICE --runs 4 --epochs 100 --filename "$LOG_DIR/molhiv_graphsage.log" $TEST
