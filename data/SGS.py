@@ -11,6 +11,32 @@ import numpy as np
 import scipy.stats as STATS
 
 
+def self_loop(g):
+    """
+        Utility function only, to be used only when necessary as per user self_loop flag
+        : Overwriting the function dgl.transform.add_self_loop() to not miss ndata['feat'] and edata['feat']
+        
+        
+        This function is called inside a function in MoleculeDataset class.
+    """
+    new_g = dgl.DGLGraph()
+    new_g.add_nodes(g.number_of_nodes())
+    new_g.ndata['feat'] = g.ndata['feat']
+    
+    src, dst = g.all_edges(order="eid")
+    src = dgl.backend.zerocopy_to_numpy(src)
+    dst = dgl.backend.zerocopy_to_numpy(dst)
+    non_self_edges_idx = src != dst
+    nodes = np.arange(g.number_of_nodes())
+    new_g.add_edges(src[non_self_edges_idx], dst[non_self_edges_idx])
+    new_g.add_edges(nodes, nodes)
+    
+    # This new edata is not used since this function gets called only for GCN, GAT
+    # However, we need this for the generic requirement of ndata and edata
+    new_g.edata['feat'] = torch.zeros(new_g.number_of_edges())
+    return new_g
+
+
 class SGSSplit(torch.utils.data.Dataset):
     def __init__(self, data, split):
         self.graph_lists = data[0]

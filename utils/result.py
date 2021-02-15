@@ -1,9 +1,12 @@
 import pandas as pd
 import torch
+import numpy as np
 import os
 import json
 from nets.molecules_graph_regression.load_net import gnn_model as molecules_gnn_model
 from nets.SGS_node_regression.load_net import gnn_model as SGS_gnn_model
+from nets.superpixels_graph_classification.load_net import gnn_model as superpixels_gnn_model
+from nets.SBMs_node_classification.load_net import gnn_model as SBMs_gnn_model
 from distutils.dir_util import copy_tree, remove_tree
 from distutils.file_util import copy_file
 
@@ -100,11 +103,11 @@ def parse(dir_path):
                         d[conf[1]] = conf[2](ln[start:end])
                 
                 if ln.startswith('params='):
-                    params = json.loads(_preprocess_json_str(ln[7:]))
+                    params = json.loads(_preprocess_json_str(ln[len('params='):]))
                     d.update(params)
                 
                 if ln.startswith('net_params='):
-                    net_params = json.loads(_preprocess_json_str(ln[11:].replace('device(type=\'cuda\')', '"cuda"')))
+                    net_params = json.loads(_preprocess_json_str(ln[len('net_params='):].replace('device(type=\'cuda\')', '"cuda"')))
                     d.update(net_params)
 
         d['filename'] = fn
@@ -117,35 +120,20 @@ def parse(dir_path):
     })
 
 
-def load_model(exp_dir, device=torch.device('cpu')):
-    exp_dir = exp_dir.strip()
-    if exp_dir.endswith('/'):
-        exp_dir = exp_dir[0:-1]
-    
-    df = parse(exp_dir)
-    print('Experiment details:')
-    
-    dataset_name = df.iloc[0]['dataset']
-    print('Dataset =', dataset_name)
-    model_type = df.iloc[0]['model']
+def _load_one_model(exp_dir, df, index, device, verbose, gnn_model):
+    filename = df.iloc[index]['filename']
+    dataset_name = df.iloc[index]['dataset']
+    model_type = df.iloc[index]['model']
     model_name = os.path.basename(exp_dir)
-    print('Model Type =', model_type, ', Model Name =', model_name)
+
+    if verbose:
+        print('\nModel #%s:' % index)
     
-    # Find the ckpt with best performance
-    if dataset_name in ['ZINC']:
-        df = df.sort_values(by='test_MAE', ascending=True)
-        gnn_model = molecules_gnn_model
-    elif dataset_name in ['SGS_HIGH_PASS', 'SGS_LOW_PASS', 'SGS_BAND_PASS']:
-        df = df.sort_values(by='test_MAE', ascending=True)
-        gnn_model = SGS_gnn_model
-    
-    filename = df.iloc[0]['filename']
-    
-    model_seed = df.iloc[0]['seed']
-    print('Seed =', model_seed)
+    model_seed = df.iloc[index]['seed']
+    if verbose:
+        print('Seed =', model_seed)
     
     ckpt_id = filename[len('results'):-len('.txt')]
-    print('Best ckpt =', ckpt_id)
     
     # Retrieve network params
     net_params = None
@@ -154,24 +142,84 @@ def load_model(exp_dir, device=torch.device('cpu')):
             ln = ln.strip()
 
             if ln.startswith('net_params='):
-                net_params = json.loads(_preprocess_json_str(ln[11:].replace('device(type=\'cuda\')', '"cuda"')))
+                net_params = json.loads(_preprocess_json_str(ln[len('net_params='):].replace('device(type=\'cuda\')', '"cuda"')))
                 del net_params['device']
                 break
-    print('Net params =', net_params)
+    if verbose:
+        print('Net params =', net_params)
     
     # Search for the latest ckpt
     ckpt_dir = os.path.join(exp_dir, 'checkpoints', ckpt_id, 'RUN_')
     ckpt_fn = sorted(os.listdir(ckpt_dir))[-1]
     ckpt_path = os.path.join(ckpt_dir, ckpt_fn)
-    print('Ckpt path =', ckpt_path)
+    if verbose:
+        print('Ckpt path =', ckpt_path)
     
     # Restore ckpt
-    print('Restoring ckpt...')
+    if verbose:
+        print('Restoring ckpt...')
     ckpt = torch.load(ckpt_path)
     model = gnn_model(model_type, net_params)
     model = model.to(device)
     model.load_state_dict(ckpt)
     model.eval()
-    print('Ckpt restored.\n')
+
+    total_param = 0
+    for param in model.parameters():
+        total_param += np.prod(list(param.data.size()))
+    if verbose:
+        print('Total parameters:', total_param)
+
+    if verbose:
+        print('Ckpt restored.\n')
     
-    return {'model': model, 'dataset': dataset_name, 'model_name': model_name, 'path': ckpt_path, 'seed': model_seed}
+    return {'model': model, 'dataset': dataset_name, 'model_name': model_name, 'path': ckpt_path, 'seed': model_seed, 'net_params': net_params}
+
+def load_model(exp_dir, device=torch.device('cpu'), filter=None, only_best = True, verbose=True):
+    exp_dir = exp_dir.strip()
+    if exp_dir.endswith('/'):
+        exp_dir = exp_dir[0:-1]
+    
+    df = parse(exp_dir)
+    if filter:
+        df = filter(df)
+    if df.empty:
+        raise Exception('No available model')
+
+    print('== Details:')
+    
+    dataset_name = df.iloc[0]['dataset']
+    if not df['dataset'].eq(dataset_name).all():
+        raise Exception('Dataset not unique')
+    print('Dataset =', dataset_name)
+
+    model_type = df.iloc[0]['model']
+    model_name = os.path.basename(exp_dir)
+    if not df['model'].eq(model_type).all():
+        raise Exception('Model type not unique')
+    print('Model Type =', model_type, ', Model Name =', model_name)
+    
+    # Sort the ckpts by their performance
+    if dataset_name in ['ZINC']:
+        df = df.sort_values(by='test_MAE', ascending=True)
+        gnn_model = molecules_gnn_model
+    elif dataset_name in ['SGS_HIGH_PASS', 'SGS_LOW_PASS', 'SGS_BAND_PASS']:
+        df = df.sort_values(by='test_MAE', ascending=True)
+        gnn_model = SGS_gnn_model
+    elif dataset_name in ['CIFAR10', 'MNIST']:
+        df = df.sort_values(by='test_ACC', ascending=True)
+        gnn_model = superpixels_gnn_model
+    elif dataset_name in ['SBM_CLUSTER', 'SBM_PATTERN']:
+        df = df.sort_values(by='test_ACC', ascending=True)
+        gnn_model = SBMs_gnn_model
+
+    if only_best:
+        return _load_one_model(exp_dir, df, 0, device, verbose, gnn_model)
+    else:
+        res_ls = []
+        for i in range(len(df)):
+            res_ls.append(_load_one_model(exp_dir, df, i, device, verbose, gnn_model))
+        
+        print('Totally loaded %s %s models' % (len(res_ls), model_type))
+
+        return res_ls

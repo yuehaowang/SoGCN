@@ -5,9 +5,9 @@
     },
     
     "model": "SoGCN",
-    "dataset": "ZINC",
+    "dataset": "CIFAR10",
     
-    "out_dir": "out/molecules_graph_regression/",
+    "out_dir": "out/superpixels_graph_classification/",
     
     "params": {
         "seed": 41,
@@ -19,20 +19,21 @@
         "min_lr": 1e-5,
         "weight_decay": 0.0,
         "print_epoch_interval": 5,
-        "max_time": 12
+        "max_time": 24
     },
     
     "net_params": {
-        "L": 16,
-        "hidden_dim": 105,
-        "out_dim": 105,
+        "L": 4,
+        "hidden_dim": 75,
+        "out_dim": 75,
         "residual": true,
-        "readout": "sum",
+        "readout": "mean",
         "in_feat_dropout": 0.0,
-        "dropout": 0.0,
+        "dropout": 0.1,
         "batch_norm": true,
         "self_loop": false,
-        "max_order": 2,
-        "gru": false
+        "undirected": true,
+        "gru": true,
+        "max_order": 2
     }
 }

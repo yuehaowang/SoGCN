@@ -43,7 +43,7 @@ class DotDict(dict):
 from nets.molecules_graph_regression.load_net import gnn_model # import all GNNS
 from train.train_molecules_graph_regression import train_epoch_sparse as train_epoch, evaluate_network_sparse as evaluate_network # import training functions
 from data.data import LoadData # import dataset
-
+from utils.result import load_model
 
 
 
@@ -64,10 +64,17 @@ def gpu_setup(use_gpu, gpu_id):
 
 
 
-
-
-
-
+"""
+    Random Seed Setup
+"""
+def set_random_seed(seed, device=None):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if device and device.type == 'cuda':
+        torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 
@@ -78,9 +85,7 @@ def view_model_param(MODEL_NAME, net_params, verbose=False):
     model = gnn_model(MODEL_NAME, net_params)
     total_param = 0
     print("MODEL DETAILS:\n")
-    #print(model)
     for param in model.parameters():
-        # print(param.data.size())
         total_param += np.prod(list(param.data.size()))
     print('MODEL/Total parameters:', MODEL_NAME, total_param)
 
@@ -91,6 +96,52 @@ def view_model_param(MODEL_NAME, net_params, verbose=False):
         print(model)
         
     return total_param
+
+
+"""
+    TESTING CODE
+"""
+
+def test_pipeline(MODEL_NAME, dataset, device, verbose, out_dir):
+    # Load models
+    print('\n>> Loading models...')
+    model_ls = load_model(out_dir, device=device, only_best=False, verbose=verbose,
+                        filter=lambda df: df[df['model'] == MODEL_NAME][df['dataset'] == dataset.name])
+
+
+    # Preparing dataset
+    print('\n>> Preparing data...')
+    if MODEL_NAME in ['GCN']:
+        if model_ls[0]['net_params']['self_loop']:
+            print("[!] Adding graph self-loops for GCN/GAT models (central node trick).")
+            dataset._add_self_loops()
+    
+    testset = dataset.test
+    print("Test Graphs: ", len(testset))
+    # Batching test data
+    test_loader = DataLoader(testset, batch_size=model_ls[0]['net_params']['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
+
+
+    # Test models
+    print('\n>> Testing models...')
+    mae_ls = []
+    for i, item in enumerate(model_ls):
+        model = item['model']
+        net_params = item['net_params']
+
+        # Set random seed
+        set_random_seed(item['seed'], device)
+
+        # Evaluate model
+        _, test_mae = evaluate_network(model, device, test_loader, 0)
+        mae_ls.append(test_mae)
+
+        if verbose:
+            print('\nModel #%s' % i)
+            print('Test MAE: %s' % mae_ls[-1])
+
+    print('\n')
+    print('AVG Test MAE: %s, s.d.: %s' % (np.mean(mae_ls), np.std(mae_ls)))
 
 
 """
@@ -136,24 +187,22 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
     epoch_train_losses, epoch_val_losses = [], []
     epoch_train_MAEs, epoch_val_MAEs = [], [] 
     
-    # Batching data
+    # Data loaders
     train_loader = DataLoader(trainset, batch_size=params['batch_size'], shuffle=True, drop_last=False, collate_fn=dataset.collate)
     val_loader = DataLoader(valset, batch_size=params['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
     test_loader = DataLoader(testset, batch_size=params['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
     
     # At any point you can hit Ctrl + C to break out of training early.
     try:
-        with tqdm(range(params['epochs'])) as t:
+        with tqdm(range(params['epochs']), ascii=True) as t:
             for epoch in t:
 
                 t.set_description('Epoch %d' % epoch)
 
                 start = time.time()
 
-                if MODEL_NAME in ['RingGNN', '3WLGNN']: # since different batch training function for RingGNN
-                    epoch_train_loss, epoch_train_mae, optimizer = train_epoch(model, optimizer, device, train_loader, epoch, params['batch_size'])
-                else:   # for all other models common train function
-                    epoch_train_loss, epoch_train_mae, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
+                # for all other models common train function
+                epoch_train_loss, epoch_train_mae, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
                     
                 epoch_val_loss, epoch_val_mae = evaluate_network(model, device, val_loader, epoch)
                 _, epoch_test_mae = evaluate_network(model, device, test_loader, epoch)
@@ -267,13 +316,26 @@ def main():
     parser.add_argument('--verbose', help="Please give a value for verbose")
     parser.add_argument('--max_order', help="Please give a value for max_order")
     parser.add_argument('--gru', help="Please give a value for gru")
+    parser.add_argument('--test', help="Please give a value for test")
     args = parser.parse_args()
-    with open(args.config) as f:
-        config = json.load(f)
+    
+    if args.config is not None:
+        with open(args.config) as f:
+            config = json.load(f)
+    else:
+        config = {'gpu': {'use': False, 'id': 0}, 'params': {}, 'net_params': {}}
 
     only_view_params = False
     if args.only_view_params is not None:
         only_view_params = True if args.only_view_params=='True' else False
+
+    test_mode = False
+    if args.test is not None:
+        test_mode = True if args.test=='True' else False
+
+    verbose_mode = False
+    if args.verbose is not None:
+        verbose_mode = True if args.verbose=='True' else False
 
     # Device
     if args.gpu_id is not None:
@@ -283,22 +345,48 @@ def main():
     # Model name
     if args.model is not None:
         MODEL_NAME = args.model
-    else:
+    elif 'model' in config:
         MODEL_NAME = config['model']
+    else:
+        raise Exception('No specified model (--model)')
     # Dataset name
     if args.dataset is not None:
         DATASET_NAME = args.dataset
-    else:
+    elif 'dataset' in config:
         DATASET_NAME = config['dataset']
+    else:
+        raise Exception('No specified dataset (--dataset)')
     # Out directory
     if args.out_dir is not None:
         out_dir = args.out_dir
-    else:
+    elif 'out_dir' in config:
         out_dir = config['out_dir']
+    else:
+        raise Exception('No specified out directory (--out_dir)')
+    
+
+    '''
+    Load dataset
+    '''
+    # ZINC dataset
+    dataset = LoadData(DATASET_NAME)
+
+
+    '''
+        TEST model pipeline
+    '''
+    if test_mode:
+        print ('=' * 10 + ' TEST mode ' + '=' * 10)
+        test_pipeline(MODEL_NAME, dataset, device, verbose_mode, out_dir)
+
+        return
+    
+
+    '''
+        TRAIN model pipeline
+    '''
     # Parameters
     params = config['params']
-    if not 'verbose' in params:
-        params['verbose'] = False
     if args.seed is not None:
         params['seed'] = int(args.seed)
     if args.epochs is not None:
@@ -319,13 +407,12 @@ def main():
         params['print_epoch_interval'] = int(args.print_epoch_interval)
     if args.max_time is not None:
         params['max_time'] = float(args.max_time)
-    if args.verbose is not None:
-        params['verbose'] = True if args.verbose=='True' else False
     # Network parameters
     net_params = config['net_params']
     net_params['device'] = device
     net_params['gpu_id'] = config['gpu']['id']
-    net_params['batch_size'] = params['batch_size']
+    if 'batch_size' in params:
+        net_params['batch_size'] = params['batch_size']
     if not 'max_order' in net_params:
         net_params['max_order'] = 2
     if not 'gru' in net_params:
@@ -358,25 +445,18 @@ def main():
         net_params['gru'] = True if args.gru=='True' else False
     if args.activation is not None:
         net_params['activation'] = args.activation
-
-    # Set random seed
-    random.seed(params['seed'])
-    np.random.seed(params['seed'])
-    torch.manual_seed(params['seed'])
-    if device.type == 'cuda':
-        torch.cuda.manual_seed(params['seed'])
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
     
-    # ZINC dataset
-    dataset = LoadData(DATASET_NAME)
     net_params['num_atom_type'] = dataset.num_atom_type
     net_params['num_bond_type'] = dataset.num_bond_type
-    
-    # View parameter only
-    net_params['total_param'] = view_model_param(MODEL_NAME, net_params, params['verbose'])
+
+
+    # Set random seed
+    set_random_seed(params['seed'], device)
+
+    # View parameters
+    net_params['total_param'] = view_model_param(MODEL_NAME, net_params, verbose_mode)
     if only_view_params:
-        print('== View Parameters only: %d ==' % net_params['total_param'])
+        print('== View Parameters only ==')
         return
     
     root_log_dir = out_dir + 'logs/' + MODEL_NAME + "_" + DATASET_NAME + "_GPU" + str(config['gpu']['id']) + "_" + start_time_str

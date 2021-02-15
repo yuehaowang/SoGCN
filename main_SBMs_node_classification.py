@@ -43,7 +43,8 @@ class DotDict(dict):
 
 from nets.SBMs_node_classification.load_net import gnn_model # import GNNs
 from data.data import LoadData # import dataset
-
+from train.train_SBMs_node_classification import train_epoch_sparse as train_epoch, evaluate_network_sparse as evaluate_network # import train functions for GCNs
+from utils.result import load_model
 
 
 
@@ -63,12 +64,17 @@ def gpu_setup(use_gpu, gpu_id):
     return device
 
 
-
-
-
-
-
-
+"""
+    Random Seed Setup
+"""
+def set_random_seed(seed, device=None):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if device and device.type == 'cuda':
+        torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 """
@@ -92,6 +98,53 @@ def view_model_param(MODEL_NAME, net_params, verbose=False):
         
 
     return total_param
+
+
+"""
+    TESTING CODE
+"""
+
+def test_pipeline(MODEL_NAME, dataset, device, verbose, out_dir):
+    # Load models
+    print('\n>> Loading models...')
+    model_ls = load_model(out_dir, device=device, only_best=False, verbose=verbose,
+                        filter=lambda df: df[df['model'] == MODEL_NAME][df['dataset'] == dataset.name])
+
+
+    # Preparing dataset
+    print('\n>> Preparing data...')
+    if MODEL_NAME in ['GCN']:
+        if model_ls[0]['net_params']['self_loop']:
+            print("[!] Adding graph self-loops for GCN/GAT models (central node trick).")
+            dataset._add_self_loops()
+    
+    testset = dataset.test
+    print("Test Graphs: ", len(testset))
+    # Batching test data
+    test_loader = DataLoader(testset, batch_size=model_ls[0]['net_params']['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
+
+
+    # Test models
+    print('\n>> Testing models...')
+    acc_ls = []
+    for i, item in enumerate(model_ls):
+        model = item['model']
+        net_params = item['net_params']
+        net_params['device'] = device
+
+        # Set random seed
+        set_random_seed(item['seed'], device)
+
+        # Evaluate model
+        _, test_acc = evaluate_network(model, device, test_loader, 0)
+        acc_ls.append(test_acc)
+
+        if verbose:
+            print('\nModel #%s' % i)
+            print('Test Accuracy: %s' % acc_ls[-1])
+
+    print('\n')
+    print('AVG Test Accuracy: %s, s.d.: %s' % (np.mean(acc_ls), np.std(acc_ls)))
 
 
 """
@@ -146,21 +199,10 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
     epoch_train_losses, epoch_val_losses = [], []
     epoch_train_accs, epoch_val_accs = [], [] 
     
-    if MODEL_NAME in ['RingGNN', '3WLGNN']:
-        # import train functions specific for WL-GNNs
-        from train.train_SBMs_node_classification import train_epoch_dense as train_epoch, evaluate_network_dense as evaluate_network
-        
-        train_loader = DataLoader(trainset, shuffle=True, collate_fn=dataset.collate_dense_gnn)
-        val_loader = DataLoader(valset, shuffle=False, collate_fn=dataset.collate_dense_gnn)
-        test_loader = DataLoader(testset, shuffle=False, collate_fn=dataset.collate_dense_gnn)
-        
-    else:
-        # import train functions for all other GCNs
-        from train.train_SBMs_node_classification import train_epoch_sparse as train_epoch, evaluate_network_sparse as evaluate_network 
-        
-        train_loader = DataLoader(trainset, batch_size=params['batch_size'], shuffle=True, collate_fn=dataset.collate)
-        val_loader = DataLoader(valset, batch_size=params['batch_size'], shuffle=False, collate_fn=dataset.collate)
-        test_loader = DataLoader(testset, batch_size=params['batch_size'], shuffle=False, collate_fn=dataset.collate)
+    # Data loaders        
+    train_loader = DataLoader(trainset, batch_size=params['batch_size'], shuffle=True, collate_fn=dataset.collate)
+    val_loader = DataLoader(valset, batch_size=params['batch_size'], shuffle=False, collate_fn=dataset.collate)
+    test_loader = DataLoader(testset, batch_size=params['batch_size'], shuffle=False, collate_fn=dataset.collate)
         
     # At any point you can hit Ctrl + C to break out of training early.
     try:
@@ -171,10 +213,7 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
 
                 start = time.time()
 
-                if MODEL_NAME in ['RingGNN', '3WLGNN']: # since different batch training function for dense GNNs
-                    epoch_train_loss, epoch_train_acc, optimizer = train_epoch(model, optimizer, device, train_loader, epoch, params['batch_size'])
-                else:   # for all other models common train function
-                    epoch_train_loss, epoch_train_acc, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
+                epoch_train_loss, epoch_train_acc, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
                     
                 epoch_val_loss, epoch_val_acc = evaluate_network(model, device, val_loader, epoch)
                 _, epoch_test_acc = evaluate_network(model, device, test_loader, epoch)        
@@ -291,32 +330,75 @@ def main():
     parser.add_argument('--verbose', help="Please give a value for verbose")
     parser.add_argument('--max_order', help="Please give a value for max_order")
     parser.add_argument('--gru', help="Please give a value for gru")
+    parser.add_argument('--test', help="Please give a value for test")
     args = parser.parse_args()
-    with open(args.config) as f:
-        config = json.load(f)
+
+    if args.config is not None:
+        with open(args.config) as f:
+            config = json.load(f)
+    else:
+        config = {'gpu': {'use': False, 'id': 0}, 'params': {}, 'net_params': {}}
 
     only_view_params = False
     if args.only_view_params is not None:
         only_view_params = True if args.only_view_params=='True' else False
-        
+   
+    test_mode = False
+    if args.test is not None:
+        test_mode = True if args.test=='True' else False
+
+    verbose_mode = False
+    if args.verbose is not None:
+        verbose_mode = True if args.verbose=='True' else False
+         
     # device
     if args.gpu_id is not None:
         config['gpu']['id'] = int(args.gpu_id)
         config['gpu']['use'] = True
     device = gpu_setup(config['gpu']['use'], config['gpu']['id'])
-    # model, out_dir
+    # Model name
     if args.model is not None:
         MODEL_NAME = args.model
-    else:
+    elif 'model' in config:
         MODEL_NAME = config['model']
+    else:
+        raise Exception('No specified model (--model)')
+    # Dataset name
     if args.dataset is not None:
         DATASET_NAME = args.dataset
-    else:
+    elif 'dataset' in config:
         DATASET_NAME = config['dataset']
+    else:
+        raise Exception('No specified dataset (--dataset)')
+    # Out directory
     if args.out_dir is not None:
         out_dir = args.out_dir
-    else:
+    elif 'out_dir' in config:
         out_dir = config['out_dir']
+    else:
+        raise Exception('No specified out directory (--out_dir)')
+
+
+    '''
+    Load dataset
+    '''
+    # SBMs
+    dataset = LoadData(DATASET_NAME)
+
+
+    '''
+        TEST model pipeline
+    '''
+    if test_mode:
+        print ('=' * 10 + ' TEST mode ' + '=' * 10)
+        test_pipeline(MODEL_NAME, dataset, device, verbose_mode, out_dir)
+
+        return
+
+
+    '''
+        TRAIN model pipeline
+    '''
     # parameters
     params = config['params']
     if not 'verbose' in params:
@@ -364,42 +446,14 @@ def main():
         net_params['residual'] = True if args.residual=='True' else False
     if args.readout is not None:
         net_params['readout'] = args.readout
-    # if args.kernel is not None:
-    #     net_params['kernel'] = int(args.kernel)
-    # if args.n_heads is not None:
-    #     net_params['n_heads'] = int(args.n_heads)
-    # if args.gated is not None:
-    #     net_params['gated'] = True if args.gated=='True' else False
     if args.in_feat_dropout is not None:
         net_params['in_feat_dropout'] = float(args.in_feat_dropout)
     if args.dropout is not None:
         net_params['dropout'] = float(args.dropout)
-    # if args.layer_norm is not None:
-    #     net_params['layer_norm'] = True if args.layer_norm=='True' else False
     if args.batch_norm is not None:
         net_params['batch_norm'] = True if args.batch_norm=='True' else False
-    # if args.sage_aggregator is not None:
-    #     net_params['sage_aggregator'] = args.sage_aggregator
-    # if args.data_mode is not None:
-    #     net_params['data_mode'] = args.data_mode
-    # if args.num_pool is not None:
-    #     net_params['num_pool'] = int(args.num_pool)
-    # if args.gnn_per_block is not None:
-    #     net_params['gnn_per_block'] = int(args.gnn_per_block)
-    # if args.embedding_dim is not None:
-    #     net_params['embedding_dim'] = int(args.embedding_dim)
-    # if args.pool_ratio is not None:
-    #     net_params['pool_ratio'] = float(args.pool_ratio)
-    # if args.linkpred is not None:
-    #     net_params['linkpred'] = True if args.linkpred=='True' else False
-    # if args.cat is not None:
-    #     net_params['cat'] = True if args.cat=='True' else False
     if args.self_loop is not None:
         net_params['self_loop'] = True if args.self_loop=='True' else False
-    # if args.pos_enc is not None:
-    #     net_params['pos_enc'] = True if args.pos_enc=='True' else False
-    # if args.pos_enc_dim is not None:
-    #     net_params['pos_enc_dim'] = int(args.pos_enc_dim)
     if args.max_order is not None:
         net_params['max_order'] = int(args.max_order)
     if args.gru is not None:
@@ -407,21 +461,13 @@ def main():
     if args.activation is not None:
         net_params['activation'] = args.activation
 
-    # setting seeds
-    random.seed(params['seed'])
-    np.random.seed(params['seed'])
-    torch.manual_seed(params['seed'])
-    if device.type == 'cuda':
-        torch.cuda.manual_seed(params['seed'])
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-        
-    # SBM
-    dataset = LoadData(DATASET_NAME)
     net_params['in_dim'] = torch.unique(dataset.train[0][0].ndata['feat'],dim=0).size(0) # node_dim (feat is an integer)
     net_params['n_classes'] = torch.unique(dataset.train[0][1],dim=0).size(0)
 
+    # Set random seed
+    set_random_seed(params['seed'], device)
 
+    # View parameters
     net_params['total_param'] = view_model_param(MODEL_NAME, net_params, params['verbose'])
     if only_view_params:
         print('== View Parameters only ==')

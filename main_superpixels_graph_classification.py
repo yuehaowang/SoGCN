@@ -42,7 +42,8 @@ class DotDict(dict):
 """
 from nets.superpixels_graph_classification.load_net import gnn_model # import all GNNS
 from data.data import LoadData # import dataset
-
+from train.train_superpixels_graph_classification import train_epoch_sparse as train_epoch, evaluate_network_sparse as evaluate_network # import train functions for GCNs
+from utils.result import load_model
 
 
 
@@ -62,12 +63,17 @@ def gpu_setup(use_gpu, gpu_id):
     return device
 
 
-
-
-
-
-
-
+"""
+    Random Seed Setup
+"""
+def set_random_seed(seed, device=None):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if device and device.type == 'cuda':
+        torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 """
@@ -93,6 +99,56 @@ def view_model_param(MODEL_NAME, net_params, verbose=False):
 
 
 """
+    TESTING CODE
+"""
+
+def test_pipeline(MODEL_NAME, dataset, device, verbose, out_dir):
+    # Load models
+    print('\n>> Loading models...')
+    model_ls = load_model(out_dir, device=device, only_best=False, verbose=verbose,
+                        filter=lambda df: df[df['model'] == MODEL_NAME][df['dataset'] == dataset.name])
+
+
+    # Preparing dataset
+    print('\n>> Preparing data...')
+    if MODEL_NAME in ['GCN']:
+        if model_ls[0]['net_params']['self_loop']:
+            print("[!] Adding graph self-loops for GCN/GAT models (central node trick).")
+            dataset._add_self_loops()
+    if MODEL_NAME in ['SoGCN']:
+        if model_ls[0]['net_params']['undirected']:
+            print("[!] Converting directed graphs to undirected graphs for SoGCN model.")
+            dataset._to_undirected()
+    
+    testset = dataset.test
+    print("Test Graphs: ", len(testset))
+    # Batching test data
+    test_loader = DataLoader(testset, batch_size=model_ls[0]['net_params']['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
+
+
+    # Test models
+    print('\n>> Testing models...')
+    acc_ls = []
+    for i, item in enumerate(model_ls):
+        model = item['model']
+        net_params = item['net_params']
+
+        # Set random seed
+        set_random_seed(item['seed'], device)
+
+        # Evaluate model
+        _, test_acc = evaluate_network(model, device, test_loader, 0)
+        acc_ls.append(test_acc)
+
+        if verbose:
+            print('\nModel #%s' % i)
+            print('Test Accuracy: %s' % acc_ls[-1])
+
+    print('\n')
+    print('AVG Test Accuracy: %s, s.d.: %s' % (np.mean(acc_ls), np.std(acc_ls)))
+
+
+"""
     TRAINING CODE
 """
 
@@ -108,7 +164,7 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
             dataset._add_self_loops()
     if MODEL_NAME in ['SoGCN']:
         if net_params['undirected']:
-            print("[!] Converting directed graphs to undirected graph for SoloGCN model.")
+            print("[!] Converting directed graphs to undirected graphs for SoGCN model.")
             dataset._to_undirected()
     
     trainset, valset, testset = dataset.train, dataset.val, dataset.test
@@ -140,26 +196,21 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
     epoch_train_losses, epoch_val_losses = [], []
     epoch_train_accs, epoch_val_accs = [], [] 
     
-    # import train functions for all other GCNs
-    from train.train_superpixels_graph_classification import train_epoch_sparse as train_epoch, evaluate_network_sparse as evaluate_network
-
+    # Data loaders
     train_loader = DataLoader(trainset, batch_size=params['batch_size'], shuffle=True, drop_last=False, collate_fn=dataset.collate)
     val_loader = DataLoader(valset, batch_size=params['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
     test_loader = DataLoader(testset, batch_size=params['batch_size'], shuffle=False, drop_last=False, collate_fn=dataset.collate)
 
     # At any point you can hit Ctrl + C to break out of training early.
     try:
-        with tqdm(range(params['epochs'])) as t:
+        with tqdm(range(params['epochs']), ascii=True) as t:
             for epoch in t:
 
                 t.set_description('Epoch %d' % epoch)
 
                 start = time.time()
 
-                if MODEL_NAME in ['RingGNN', '3WLGNN']: # since different batch training function for dense GNNs
-                    epoch_train_loss, epoch_train_acc, optimizer = train_epoch(model, optimizer, device, train_loader, epoch, params['batch_size'])
-                else:   # for all other models common train function
-                    epoch_train_loss, epoch_train_acc, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
+                epoch_train_loss, epoch_train_acc, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
 
                 epoch_val_loss, epoch_val_acc = evaluate_network(model, device, val_loader, epoch)
                 _, epoch_test_acc = evaluate_network(model, device, test_loader, epoch)                
@@ -278,34 +329,76 @@ def main():
     parser.add_argument('--max_order', help="Please give a value for max_order")
     parser.add_argument('--gru', help="Please give a value for gru")
     parser.add_argument('--activation', help="Please give a value for activation")
+    parser.add_argument('--test', help="Please give a value for test")
     args = parser.parse_args()
-    with open(args.config) as f:
-        config = json.load(f)    
+
+    if args.config is not None:
+        with open(args.config) as f:
+            config = json.load(f)
+    else:
+        config = {'gpu': {'use': False, 'id': 0}, 'params': {}, 'net_params': {}}
 
 
     only_view_params = False
     if args.only_view_params is not None:
         only_view_params = True if args.only_view_params=='True' else False
+
+    test_mode = False
+    if args.test is not None:
+        test_mode = True if args.test=='True' else False
+
+    verbose_mode = False
+    if args.verbose is not None:
+        verbose_mode = True if args.verbose=='True' else False
         
     # device
     if args.gpu_id is not None:
         config['gpu']['id'] = int(args.gpu_id)
         config['gpu']['use'] = True
     device = gpu_setup(config['gpu']['use'], config['gpu']['id'])
-    # model, out_dir
+    # Model name
     if args.model is not None:
         MODEL_NAME = args.model
-    else:
+    elif 'model' in config:
         MODEL_NAME = config['model']
+    else:
+        raise Exception('No specified model (--model)')
+    # Dataset name
     if args.dataset is not None:
         DATASET_NAME = args.dataset
-    else:
+    elif 'dataset' in config:
         DATASET_NAME = config['dataset']
-    
+    else:
+        raise Exception('No specified dataset (--dataset)')
+    # Out directory
     if args.out_dir is not None:
         out_dir = args.out_dir
-    else:
+    elif 'out_dir' in config:
         out_dir = config['out_dir']
+    else:
+        raise Exception('No specified out directory (--out_dir)')
+
+
+    '''
+    Load dataset
+    '''
+    # Superpixels dataset
+    dataset = LoadData(DATASET_NAME)
+
+
+    '''
+        TEST model pipeline
+    '''
+    if test_mode:
+        print ('=' * 10 + ' TEST mode ' + '=' * 10)
+        test_pipeline(MODEL_NAME, dataset, device, verbose_mode, out_dir)
+
+        return
+
+
+    '''
+        TRAIN model pipeline
+    '''
     # parameters
     params = config['params']
     if not 'verbose' in params:
@@ -374,23 +467,15 @@ def main():
     if args.activation is not None:
         net_params['activation'] = args.activation
 
-    # setting seeds
-    random.seed(params['seed'])
-    np.random.seed(params['seed'])
-    torch.manual_seed(params['seed'])
-    if device.type == 'cuda':
-        torch.cuda.manual_seed(params['seed'])
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-    # Superpixels
-    dataset = LoadData(DATASET_NAME)
     net_params['in_dim'] = dataset.train[0][0].ndata['feat'][0].size(0)
     net_params['in_dim_edge'] = dataset.train[0][0].edata['feat'][0].size(0)
     num_classes = len(np.unique(np.array(dataset.train[:][1])))
     net_params['n_classes'] = num_classes
 
+    # Set random seed
+    set_random_seed(params['seed'], device)
 
+    # View parameters
     net_params['total_param'] = view_model_param(MODEL_NAME, net_params, params['verbose'])
     if only_view_params:
         print('== View Parameters only ==')
