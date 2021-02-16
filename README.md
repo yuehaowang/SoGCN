@@ -22,8 +22,8 @@ python scripts/exp.py -a start -e highpass_sogcn -t SGS -g 1111 --dataset SGS_HI
 
 ## Low-Pass
 python scripts/exp.py -a start -e lowpass_sogcn -t SGS -g 1111 --dataset SGS_LOW_PASS --config 'configs/SGS_node_regression_SoGCN.json'
-python scripts/exp.py -a start -e lowpass_sogcn -t SGS -g 1111 --dataset SGS_HIGH_PASS --config 'configs/SGS_node_regression_GCN.json'
-python scripts/exp.py -a start -e lowpass_sogcn -t SGS -g 1111 --dataset SGS_HIGH_PASS --config 'configs/SGS_node_regression_GIN.json'
+python scripts/exp.py -a start -e lowpass_sogcn -t SGS -g 1111 --dataset SGS_LOW_PASS --config 'configs/SGS_node_regression_GCN.json'
+python scripts/exp.py -a start -e lowpass_sogcn -t SGS -g 1111 --dataset SGS_LOW_PASS --config 'configs/SGS_node_regression_GIN.json'
 
 ## Band-Pass
 python scripts/exp.py -a start -e bandpass_sogcn -t SGS -g 1111 --dataset SGS_BAND_PASS --config 'configs/SGS_node_regression_SoGCN.json'
@@ -45,6 +45,8 @@ Note the results will be saved to '_out/SGS_node_regression/'.
     bash scripts/download_pretrained_superpixels.sh
     bash scripts/download_pretrained_SBMs.sh
     ```
+
+    Pretrained models will be downloaded to '_out/molecules_graph_regression', '_out/superpixels_graph_classification', '_out/SBMs_node_classification', respectively.
 
 2. Type the commands for different tasks
 
@@ -73,8 +75,8 @@ Note the results will be saved to '_out/SGS_node_regression/'.
 
     ```
     ## CLUSTER
-    python main_SBMs_node_classification.py --model SoGCN --dataset SBM_PATTERN  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/cluster_sogcn
-    python main_SBMs_node_classification.py --model SoGCN --dataset SBM_PATTERN  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/cluster_sogcn_gru
+    python main_SBMs_node_classification.py --model SoGCN --dataset SBM_CLUSTER  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/cluster_sogcn
+    python main_SBMs_node_classification.py --model SoGCN --dataset SBM_CLUSTER  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/cluster_sogcn_gru
 
     ## PATTERN
     python main_SBMs_node_classification.py --model SoGCN --dataset SBM_PATTERN  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/pattern_sogcn
