@@ -9,6 +9,7 @@ from layers.sogcn_layer import SoGCNLayer
 from layers.gru_layer import GRU
 from layers.mlp_readout_layer import MLPReadout
 
+
 activations = {
     'relu': nn.ReLU(),
     'tanh': nn.Tanh(),

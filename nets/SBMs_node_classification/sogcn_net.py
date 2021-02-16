@@ -5,11 +5,7 @@ import torch.nn.functional as F
 import dgl
 import numpy as np
 
-"""
-    GCN: Graph Convolutional Networks
-    Thomas N. Kipf, Max Welling, Semi-Supervised Classification with Graph Convolutional Networks (ICLR 2017)
-    http://arxiv.org/abs/1609.02907
-"""
+
 from layers.sogcn_layer import SoGCNLayer
 from layers.mlp_readout_layer import MLPReadout
 from layers.gru_layer import GRU
