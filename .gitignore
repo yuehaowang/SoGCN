@@ -22,7 +22,6 @@ PATH/
 
 #ZINC dataset
 data/molecules/*.pkl
-data/molecules/*.index
 data/molecules/*.pickle
 data/molecules/*.zip
 
