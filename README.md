@@ -47,6 +47,11 @@ scripts/run_ogbg_molhiv.sh <log_dir> [<gpu_id>] [--test]
 ```
 where `log_dir` specifies the folder to load or save output logs. The downloaded log files will be saved in `_out/protein_nodeproppred` and `_out/molhiv_graphproppred` for `ogbn-protein` and `ogbn-molhiv` datasets, respectively. `gpu_id` specifies the GPU device to run our models. Add `--test` if you only want to reload the log files and read out the testing results. The OGB dataset will be automatically downloaded into `data/OGB` directory at the first run.
 
+To download the saved log files for ogb datasets, please run the following scripts:
+```
+bash scripts/download_logfiles_ogb.sh
+```
+
 ## GNN Benchmarks
 
 To test on our pretrained models on GNN benchmarks, please follow the steps as below:
