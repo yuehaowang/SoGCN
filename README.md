@@ -1,6 +1,6 @@
 # SoGCN: Second-Order Graph Convolutional Networks
 
-This is author's implementation of paper "SoGCN: Second-Order Graph Convolutional Networks" in PyTorch. All the hyper-parameters and experiment settings have been included in this repo.
+This is the authors' implementation of paper "SoGCN: Second-Order Graph Convolutional Networks" in PyTorch. All the hyper-parameters and experiment settings have been included in this repo.
 
 ## Requirements
 
