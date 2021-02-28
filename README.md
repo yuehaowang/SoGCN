@@ -1,16 +1,14 @@
 # SoGCN: Second-Order Graph Convolutional Networks
 
-This is author's implementation of paper "SoGCN: Second-Order Graph Convolutional Networks" in PyTorch. All of the hyper-parameters and experiment settings have been included in this repo.
+This is author's implementation of paper "SoGCN: Second-Order Graph Convolutional Networks" in PyTorch. All the hyper-parameters and experiment settings have been included in this repo.
 
 ## Requirements
 
-- Based on [GNN Benchmark](https://github.com/graphdeeplearning/benchmarking-gnns)
-- [Benchmark Installation](https://github.com/graphdeeplearning/benchmarking-gnns/blob/master/docs/01_benchmark_installation.md)
+For the GNN benchmarking part, our experiments are based on [GNN Benchmark](https://github.com/graphdeeplearning/benchmarking-gnns). Please follow the instructions in [Benchmark Installation](https://github.com/graphdeeplearning/benchmarking-gnns/blob/master/docs/01_benchmark_installation.md) to install the running environment. Our code is tested with PyTorch 1.3.1 + Cuda Toolkit 10.0.
 
-- Based on [Open Graph Benchmark](https://ogb.stanford.edu/)
-- [Benchmark Installation](https://ogb.stanford.edu/docs/home/)
+For the experiments on OGB [Open Graph Benchmark](https://ogb.stanford.edu/), we built our models based on [offical code](https://github.com/snap-stanford/ogb). Please follow the instructions in [Getting Started](https://ogb.stanford.edu/docs/home/) to configure the running environment. Our code is tested with PyTorch 1.4.0 + Cuda Toolkit 10.1.
 
-Our experiments is conducted on a 4-core Nvidia Quadro P6000 GPU running on Ubuntu 18.04.2 LTS. Our code is tested on PyTorch 1.4.0 + Cuda Toolkit 10.1 and PyTorch 1.3.1 + Cuda Toolkit 10.0.
+Our experiments is conducted on a 4-core Nvidia Quadro P6000 GPU running on Ubuntu 18.04.2 LTS.
 
 ## Reproduce Results
 
