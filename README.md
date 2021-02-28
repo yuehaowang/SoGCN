@@ -7,7 +7,8 @@ This is author's implementation of paper "SoGCN: Second-Order Graph Convolutiona
 - Based on [GNN Benchmark](https://github.com/graphdeeplearning/benchmarking-gnns)
 - [Benchmark Installation](https://github.com/graphdeeplearning/benchmarking-gnns/blob/master/docs/01_benchmark_installation.md)
 
-- Based on [Open Graph Benchmark](https://github.com/graphdeeplearning/benchmarking-gnns)
+- Based on [Open Graph Benchmark](https://ogb.stanford.edu/)
+- [Benchmark Installation](https://ogb.stanford.edu/docs/home/)
 
 ## Reproduce Results
 
