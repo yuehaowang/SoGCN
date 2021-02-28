@@ -10,6 +10,8 @@ This is author's implementation of paper "SoGCN: Second-Order Graph Convolutiona
 - Based on [Open Graph Benchmark](https://ogb.stanford.edu/)
 - [Benchmark Installation](https://ogb.stanford.edu/docs/home/)
 
+Our experiments is conducted on a 4-core Nvidia Quadro P6000 GPU running on Ubuntu 18.04.2 LTS. Our code is tested on PyTorch 1.4.0 + Cuda Toolkit 10.1 and PyTorch 1.3.1 + Cuda Toolkit 10.0.
+
 ## Reproduce Results
 
 For SGS and GNN benchmark datasets, we provide a script named 'scripts/exp.py' to run a series of model training in screen sessions. You can type `python scripts/exp.py -h` to view its usage. To OGB benchmark dataset, we provide shell scripts 'scripts/run_ogbn_proteins.sh' and 'scripts/run_ogbg_molhiv.sh' to reproduce results with our hyper-parameter settings.
