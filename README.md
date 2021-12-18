@@ -1,6 +1,10 @@
 # SoGCN: Second-Order Graph Convolutional Networks
 
-This is the authors' implementation of paper "SoGCN: Second-Order Graph Convolutional Networks" in PyTorch. All the hyper-parameters and experiment settings have been included in this repo.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
+The official implementation of paper [SoGCN: Second-Order Graph Convolutional Networks](https://arxiv.org/abs/2110.07141).
+
+Peihao Wang\*, Yuehao Wang\*, Hua Lin, Jianbo Shi
 
 ## Requirements
 
@@ -100,4 +104,18 @@ python main_SBMs_node_classification.py --model SoGCN --dataset SBM_CLUSTER  --v
 ## PATTERN
 python main_SBMs_node_classification.py --model SoGCN --dataset SBM_PATTERN  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/pattern_sogcn
 python main_SBMs_node_classification.py --model SoGCN --dataset SBM_PATTERN  --verbose True --gpu_id 0 --test True --out_dir _out/SBMs_node_classification/pattern_sogcn_gru
+```
+
+## Citation
+
+If you find this repo helpful, please cite
+```
+@misc{wang2021sogcn,
+  title={SoGCN: Second-Order Graph Convolutional Networks},
+  author={Wang, Peihao and Wang, Yuehao and Lin, Hua and Shi, Jianbo},
+  year={2021},
+  eprint={2110.07141},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG}
+}
 ```
